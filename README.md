@@ -1,42 +1,69 @@
-# py-agent-ecommerce
+## py-agent-ecommerce
     
-    py-agent-ecommerce
+   A multi-agent using aws strands
 
-# create venv
+## Integration
+
+   This is workload requires the MCP server py-mcp-server-go-ecommerce
+
+   The integrations are made via http-streamable api request.
+
+## Enviroment variables
+
+To run in local machine for local tests creat a .env in /cmd folder
+
+    POD_NAME=main-agent.localhost
+    INVENTORY_MCP_URL=http://127.0.0.1:9002/mcp
+    ORDER_MCP_URL=http://127.0.0.1:9002/mcp       
+    SESSION_ID='eliezer-001'
+    REGION=us-east-2
+    MODEL_ID=arn:aws:bedrock:us-east-2:908671954593:inference-profile/us.amazon.nova-pro-v1:0
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+    LOG_LEVEL=DEBUG
+    
+## create venv
     
     python3 -m venv .venv
 
-# activate
+## activate
 
     source .venv/bin/activate
 
-# install requirements
+## install requirements
     
     pip install -r requirements.txt
     pip install --force-reinstall strands-agents-tools
 
-# run
+## run
     
-    python3 ./multi_agent/mainAgent.py
+    python3 ./multi_agent/main.py
 
-# otel env
+## enviroment variables
 
     export POD_NAME=main-agent.localhost
-    export SESSION_ID=eliezer-006
-    export OTEL_EXPORTER_OTLP_ENDPOINT="localhost:4317"
+    export INVENTORY_MCP_URL=http://127.0.0.1:9002/mcp 
+    export ORDER_MCP_URL=http://127.0.0.1:9002/mcp   
+    export SESSION_ID=eliezer-007
+    export REGION=us-east-2
+    export MODEL_ID=arn:aws:bedrock:us-east-2:908671954593:inference-profile/us.amazon.nova-pro-v1:0
+    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+    export LOG_LEVEL=INFO
+    export OTEL_LOGS=true
+    export OTEL_STDOUT_LOG_GROUP=false
+    export LOG_GROUP=/mnt/c/Eliezer/log/py-agent-ecommerce.log
 
-# test local otel
+## test local otel
     
     kubectl port-forward svc/arch-eks-01-02-otel-collector-collector  4318:4318
 
-# prompts
+## prompts
 
     INVENTORY
-    Check the current health status of INVENTORY services and show the result
-    Create a product with sku soda-03, type beverage, status IN-STOCK and name soda 03
-    Show me the information from product sku soda-03
-    Show me the inventory information from product sku soda-01
-    Update the inventory ot the product with sku soda-03 to sold 5
+    Check the current health status of INVENTORY service and show the result
+    Create a product with sku milk-03, type beverage, status IN-STOCK and name milk 03
+    Show me the information from product sku milk-02
+    Show me the inventory information from product sku milk-01
+    Update the inventory ot the product with sku milk-03 to sold 5
 
     ORDER
     Check the current health status of ORDER services and show the result

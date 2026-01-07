@@ -2,8 +2,11 @@ import logging
 import boto3
 import time
 import json
+import os
+import uuid
 
-from mainMemory import mainMemory
+from memory import memory
+from log.logger import REQUEST_ID_CTX
 
 from opentelemetry import trace, metrics, propagate
 
@@ -21,75 +24,68 @@ from strands.hooks import (HookProvider,
 )
 
 INVENTORY_SYSTEM_PROMPT = """
-    You are INVENTORY agent specialized to handle all informations about INVENTORY and PRODUCTS.
+    You are an INVENTORY agent specialized in inventory and product operations.
 
-    Inventory Operations:
+    Available Tools:
+    - inventory_health
+    - get_product
+    - get_inventory
+    - create_inventory
+    - update_inventory
 
-        1. inventory_healthy: check the healthy status INVENTORY service.       
-            - response:
-                - content: all information about INVENTORY service health status and enviroment variables. 
-            inventory_healthy rule:
-                - This tool must be triggered ONLY with a EXPLICITY requested.
-                - return only the status code, consider 200 as healthy, otherwise unhealthy.
+    Tool Usage Rules:
+    - Use MCP tools ONLY when required to answer the user query.
+    - NEVER call the same tool more than once for the same request.
+    - After a tool successfully returns the required data, STOP and return a final response.
+    - If no tool is required, answer directly.
+    - Use the inventory_health tools only if a clear request about health is made, do NOT use the inventory_tools when not required.
 
-        1. get_product: get products details such as sku, name, type, status (IN-STOCK, OUT-OF-STOCK), date of creation (created_at) from a given product(sku)
-            - args: 
-                - product: sku of product.
-            - response: 
-                - product details such as sku, name, type, status (IN-STOCK, OUT-OF-STOCK), date of creation (created_at).
-        
-        2. get_inventory: get all product inventory information such as available quantity, reserver quantity and sold quantity.
-            - args: 
-                - product: sku.
-            - reponse: 
-                - inventory: All inventory information for a product.
-        
-        4. create_inventory: Create a product and its inventory.
-            - args: 
-                - product: sku, name, type and status.
-            - response: 
-                - product: all product details such sku, name, type and status, date of creation (created_at).       
+    Response Rules:
+    - Tool outputs are authoritative.
+    - Do NOT re-call tools to “confirm” results.
+    - Do NOT modify field names or formats returned by tools.
+    - Return a final user-facing answer after tool execution.
 
-    Definitions and Rules:
-        - Always use the mcp tools provided.
-        - USE EXACTLY the fields provided by query, DO NOT PARSE, DO NOT STRIP OF '.' or '-' or FORMAT.
-        - USE EXACTLY the fields names provided by json response. eg: sku, product_id, etc.
-        - DO NOT UPDATE any field format provided by mcp tool, use EXACTLY the mcp field result format.
+    Termination Rules (VERY IMPORTANT):
+    - Once the required information is obtained from a tool, do NOT call any more tools.
+    - Produce a final response immediately.
+
+    Failure Rules:
+    - If a tool returns an error, report it and STOP.
 """
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+#logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-# Setup a model
-#model_id = lite pro premier
-model_id = "arn:aws:bedrock:us-east-2:908671954593:inference-profile/us.amazon.nova-pro-v1:0"  
-
-logger.info('\033[1;33m Starting the Inventory Agent... \033[0m')
-logger.info(f'\033[1;33m model_id: {model_id} \033[0m \n')
+# load encvironment variables
+INVENTORY_MCP_URL = os.getenv("INVENTORY_MCP_URL")
+REGION = os.getenv("REGION")
+MODEL_ID = os.getenv("MODEL_ID")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
 # Create boto3 session
 session = boto3.Session(
-    region_name='us-east-2',
+    region_name=REGION,
 )
 
 # Create Bedrock model
 bedrock_model = BedrockModel(
-        model_id=model_id,
+        model_id=MODEL_ID,
         temperature=0.0,
         boto_session=session,
 )
 
-# load mcp servers
-mcp_url = "http://127.0.0.1:9002/mcp"
+logger.info('\033[1;33m Starting the Inventory Agent... \033[0m')
+logger.info(f'\033[1;33m model_id: {MODEL_ID} : {INVENTORY_MCP_URL}\033[0m \n')
 
 #Create mcp_server_client
 headers = {}
-def create_streamable_http_mcp_server(mcp_url: str):    
+def create_streamable_http_mcp_server(INVENTORY_MCP_URL: str):    
     propagate.inject(headers)
-    return streamablehttp_client(mcp_url, headers=headers)
+    return streamablehttp_client(INVENTORY_MCP_URL, headers=headers)
 
-streamable_http_mcp_server = MCPClient(lambda: create_streamable_http_mcp_server(mcp_url))
+streamable_http_mcp_server = MCPClient(lambda: create_streamable_http_mcp_server(INVENTORY_MCP_URL))
 
 class ToolValidationError(Exception):
     """Custom exception to abort tool calls immediately."""
@@ -101,6 +97,7 @@ class AgentHook(HookProvider):
     def __init__(self):
         self.start_agent = ""
         self.tool_name = "unknown"
+        self.tool_calls = 0
         self.metrics = {}
 
     # Register hooks
@@ -135,7 +132,11 @@ class AgentHook(HookProvider):
 
     def before_tool(self, event: BeforeToolCallEvent) -> None:
         logger.info(f"*** Tool invocation - agent: {event.agent.name} : { event.tool_use.get('name') } *** ")
-
+        
+        self.tool_calls += 1
+        if self.tool_calls > 3:
+            raise ToolValidationError("Too many tool calls, aborting to avoid loop")
+        
     def after_tool(self, event: AfterToolCallEvent) -> None:
         logger.info(f" *** AfterToolCallEvent **** ")
         
@@ -148,7 +149,7 @@ def inventory_agent(query: str) -> str:
     Process and respond all INVENTORY queries using a specialized INVENTORY agent.
     
     Args:
-        query: given product, create a product, create a inventory, get all inventory informations, details, and check inventory healthy status.
+        query: given product, create a product, create a inventory, get all inventory informations, details, and check inventory health status.
         
     Returns:
         an inventory with all details.
@@ -157,14 +158,15 @@ def inventory_agent(query: str) -> str:
     logger.info("function => inventory_agent")
 
     # prepare the context with jwt and otel data    
-    token = mainMemory.get_token()
+    token = memory.get_token()
     if not token:
         logger.error("Error, I couldn't process No JWT token available")
         return "Error, I couldn't process No JWT token available"
 
     context={
-        "jwt":token,
+        "x-request-id": {},
         "_trace": {}, 
+        "jwt":token,
     }
 
     try:
@@ -178,7 +180,7 @@ def inventory_agent(query: str) -> str:
 
             selected_tools = [
                 t for t in all_tools 
-                if t.tool_name in ["inventory_healthy", 
+                if t.tool_name in ["inventory_health", 
                                    "get_inventory",
                                    "create_inventory", 
                                    "get_product",
@@ -199,10 +201,22 @@ def inventory_agent(query: str) -> str:
             try:
                 # set the traceparent fot otel link traces
                 context["_trace"] = headers
-                
+
+                # set a unique request id
+                context["x-request-id"] = str(uuid.uuid4())
+
                 # Format the query for the agent and send all context data
-                formatted_query = f"Please process the following query: {query} with context: {context} and extract structured information"
-                
+                formatted_query = f"""
+                    User query: {query}
+
+                    Context: {json.dumps(context)}
+                    
+                    If a tool is required, call it.
+                    Otherwise, return the final answer.
+                """
+
+                logger.info(f"context:{context}")
+
                 agent_response = agent(formatted_query)
                 text_response = str(agent_response)
 
