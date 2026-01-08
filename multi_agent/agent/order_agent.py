@@ -5,7 +5,8 @@ import json
 import os
 import uuid
 
-from memory import memory
+from model.memory import memory
+from log.logger import setup_logger
 
 from opentelemetry import trace, metrics, propagate
 from mcp.client.streamable_http import streamablehttp_client
@@ -51,15 +52,19 @@ ORDER_SYSTEM_PROMPT = """
     - If a tool returns an error, report it and STOP.
 """
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# load encvironment variables
+# load environment variables
+APP_NAME = os.getenv("POD_NAME", "main-agent.localhost")
 ORDER_MCP_URL = os.getenv("ORDER_MCP_URL")
 REGION = os.getenv("REGION")
 MODEL_ID = os.getenv("MODEL_ID")
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_GROUP = os.getenv("LOG_GROUP")
+OTEL_STDOUT_LOG_GROUP = os.getenv("OTEL_STDOUT_LOG_GROUP", "false").lower() == "true"
+
+# Configure logging
+setup_logger(LOG_LEVEL, APP_NAME, OTEL_STDOUT_LOG_GROUP, LOG_GROUP)
+logger = logging.getLogger(__name__)
 
 # Create boto3 session
 session = boto3.Session(

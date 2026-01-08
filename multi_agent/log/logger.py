@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 
-REQUEST_ID_CTX = ContextVar("request_id", default="MCP_NOT_INFORMED")
+REQUEST_ID_CTX = ContextVar("request_id", default="NOT_INFORMED_BY_AGENT")
 
 class JsonFormatter(logging.Formatter):
     def __init__(self, component: str, max_msg_length: int = None):
@@ -51,8 +51,9 @@ def setup_logger(LOG_LEVEL: str,
         BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         LOG_GROUP = os.path.join(BASE_DIR,LOG_GROUP)
 
+        # File logging disabled for now
         MAX_BYTES = 10 * 1024 # 1 MB
-        BACKUP_COUNT = 1    
+        BACKUP_COUNT = 0    
         file_handler = RotatingFileHandler(
             LOG_GROUP,
             maxBytes=MAX_BYTES,
@@ -60,4 +61,6 @@ def setup_logger(LOG_LEVEL: str,
         )
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
-        root_logger.info(f"File logging enabled. Logs are being written to: {LOG_GROUP}")
+        print(f"File logging enabled. Logs are being written to: {LOG_GROUP}")
+    else:
+        print("File logging is disabled. OTEL_STDOUT_LOG_GROUP is set to False")

@@ -12,38 +12,42 @@ from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands.session.file_session_manager import FileSessionManager
 from strands_tools import calculator
 
-from memory import memory
+from model.memory import memory
+from log.logger import setup_logger
 from loginManager import LoginManager
-from inventory_agent import inventory_agent
-from order_agent import order_agent
+from agent.inventory_agent import inventory_agent
+from agent.order_agent import order_agent
 
 # -------------------------------------------
 # Startup configuration
 # -------------------------------------------
-
 # Load .env file
 #from dotenv import load_dotenv
 #load_dotenv()
 
-# Telemetry configuration
-POD_NAME = os.getenv("POD_NAME", "main-agent.localhost")
+# load environment variables
+APP_NAME = os.getenv("POD_NAME", "main-agent.localhost")
+INVENTORY_MCP_URL = os.getenv("INVENTORY_MCP_URL")
+ORDER_MCP_URL = os.getenv("ORDER_MCP_URL")
 SESSION_ID = os.getenv("SESSION_ID", "eliezer-001")
 REGION = os.getenv("REGION")
 MODEL_ID = os.getenv("MODEL_ID")
-ORDER_MCP_URL = os.getenv("ORDER_MCP_URL")
 OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
-OTEL_RESOURCE_ATTRIBUTES = POD_NAME
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+OTEL_STDOUT_LOG_GROUP = os.getenv("OTEL_STDOUT_LOG_GROUP", "false").lower() == "true"
+LOG_GROUP = os.getenv("LOG_GROUP")
 
 print("---" * 15)
-print(f"POD_NAME: {POD_NAME}")
+print(f"APP_NAME: {APP_NAME}")
+print(f"INVENTORY_MCP_URL: {INVENTORY_MCP_URL}")
+print(f"ORDER_MCP_URL: {ORDER_MCP_URL}")
 print(f"SESSION_ID: {SESSION_ID}")
 print(f"REGION: {REGION}")
 print(f"MODEL_ID: {MODEL_ID}")
-print(f"ORDER_MCP_URL: {ORDER_MCP_URL}")
 print(f"OTEL_EXPORTER_OTLP_ENDPOINT: {OTEL_EXPORTER_OTLP_ENDPOINT}")
-print(f"OTEL_RESOURCE_ATTRIBUTES: {OTEL_RESOURCE_ATTRIBUTES}")
 print(f"LOG_LEVEL: {LOG_LEVEL}")
+print(f"OTEL_STDOUT_LOG_GROUP: {OTEL_STDOUT_LOG_GROUP}")
+print(f"LOG_GROUP: {LOG_GROUP}")
 print("---" * 15)
 
 # Setup telemetry
@@ -83,7 +87,7 @@ MAIN_SYSTEM_PROMPT = """
 """
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+setup_logger(LOG_LEVEL, APP_NAME, OTEL_STDOUT_LOG_GROUP, LOG_GROUP)
 logger = logging.getLogger(__name__)
 
 # Setup a model
@@ -155,7 +159,7 @@ def clear_session(session_manager):
 # Example usage
 if __name__ == "__main__":
     print('\033[1;33m Multi Agent v 0.5 \033[0m \n')
-    print("This agent helps to interact with another agent.")
+    print("This agent helps to interact with another agent. \n")
     print("Type 'exit' to quit. \n")
     print('\033[1;31m Please login before continuing ... \033[0m \n')
     
